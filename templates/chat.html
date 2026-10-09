@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voltrix Chat</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f4f6f8;height:100vh;display:flex;justify-content:center;align-items:center}
+.chat-container{width:950px;max-width:98vw;height:620px;max-height:98vh;background:#fff;display:flex;border-radius:12px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.1)}
+.sidebar{width:280px;border-right:1px solid #ddd;background:#fafafa;display:flex;flex-direction:column}
+.profile{padding:20px;border-bottom:1px solid #ddd}.profile h2{color:#4f46e5;margin-bottom:5px}.profile p{color:#777;font-size:14px}
+.search{margin:15px;width:calc(100% - 30px);padding:10px;border:1px solid #ddd;border-radius:7px;outline:none}
+.users{flex:1;overflow-y:auto}
+.user{padding:14px 20px;display:flex;align-items:center;gap:12px;cursor:pointer}.user:hover,.user.sel{background:#eee}
+.avatar{width:42px;height:42px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;flex-shrink:0}
+.st{font-size:13px;color:#777}.st.on{color:#22c55e}
+.badge{margin-left:auto;background:#4f46e5;color:#fff;border-radius:12px;padding:2px 8px;font-size:12px}
+.logout{margin:20px;width:calc(100% - 40px);padding:10px;border:1px solid #ddd;background:#fff;border-radius:7px;cursor:pointer}
+.chat{flex:1;display:flex;flex-direction:column;min-width:0}
+.chat-header{padding:18px 20px;border-bottom:1px solid #ddd;display:flex;align-items:center;gap:12px;min-height:79px}
+.chat-header h3{margin-bottom:3px}.online{font-size:13px;color:#777}.online.on{color:#22c55e}
+.messages{flex:1;padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+.message{max-width:65%;padding:10px 14px;border-radius:12px;font-size:15px;word-wrap:break-word;white-space:pre-wrap}
+.message small{display:block;font-size:10px;opacity:.65;margin-top:3px}
+.received{background:#eee;align-self:flex-start}.sent{background:#4f46e5;color:#fff;align-self:flex-end}
+.empty{margin:auto;color:#999}
+#typing{height:18px;padding:0 20px;font-size:12px;color:#777}
+.input-area{padding:15px;border-top:1px solid #ddd;display:none;gap:10px}
+.message-input{flex:1;padding:12px;border:1px solid #ddd;border-radius:8px;outline:none}
+.send-button{padding:12px 20px;border:none;border-radius:8px;background:#4f46e5;color:#fff;cursor:pointer}.send-button:hover{background:#4338ca}
+@media(max-width:640px){.sidebar{width:120px}.search{display:none}.badge{display:none}}
+</style></head>
+<body>
+<div class="chat-container">
+  <div class="sidebar">
+    <div class="profile"><h2>Voltrix</h2><p id="welcome"></p></div>
+    <input class="search" id="search" placeholder="Search users...">
+    <div class="users" id="users"></div>
+    <button class="logout" id="logout">Logout</button>
+  </div>
+  <div class="chat">
+    <div class="chat-header" id="header"><span style="color:#999">Select a user to start chatting</span></div>
+    <div class="messages" id="messages"><div class="empty">No conversation selected</div></div>
+    <div id="typing"></div>
+    <form class="input-area" id="form">
+      <input class="message-input" id="text" placeholder="Type a message..." autocomplete="off" maxlength="2000">
+      <button class="send-button">Send</button>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let me, socket, active = null, users = [], online = new Set(), unread = {}, typingTimer, lastTyping = 0;
+
+async function init() {
+  const r = await fetch("/api/me");
+  if (!r.ok) { location.href = "/login"; return; }
+  me = await r.json();
+  $("welcome").textContent = "Welcome, " + me.username;
+
+  socket = io();
+  socket.on("presence", ids => { online = new Set(ids); renderUsers(); updateHeader(); });
+  socket.on("users_changed", loadUsers);
+  socket.on("typing", ({from}) => {
+    if (active && from === active.id) {
+      $("typing").textContent = active.username + " is typing...";
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => $("typing").textContent = "", 1800);
+    }
+  });
+  socket.on("message", m => {
+    const other = m.sender_id === me.id ? m.receiver_id : m.sender_id;
+    if (active && other === active.id) { addMsg(m); $("typing").textContent = ""; }
+    else if (m.sender_id !== me.id) { unread[other] = (unread[other] || 0) + 1; renderUsers(); }
+  });
+  loadUsers();
+}
+
+async function loadUsers() { users = await (await fetch("/api/users")).json(); renderUsers(); }
+
+function renderUsers() {
+  const q = $("search").value.toLowerCase();
+  $("users").innerHTML = "";
+  users.filter(u => u.username.toLowerCase().includes(q)).forEach(u => {
+    const on = online.has(u.id);
+    const d = document.createElement("div");
+    d.className = "user" + (active && active.id === u.id ? " sel" : "");
+    d.innerHTML = '<div class="avatar"></div><div><strong></strong><p class="st"></p></div>';
+    d.querySelector(".avatar").textContent = u.username[0].toUpperCase();
+    d.querySelector("strong").textContent = u.username;
+    const st = d.querySelector(".st"); st.textContent = on ? "Online" : "Offline"; if (on) st.classList.add("on");
+    if (unread[u.id]) { const b = document.createElement("span"); b.className = "badge"; b.textContent = unread[u.id]; d.appendChild(b); }
+    d.onclick = () => openChat(u);
+    $("users").appendChild(d);
+  });
+}
+
+function updateHeader() {
+  if (!active) return;
+  const on = online.has(active.id);
+  $("header").innerHTML = '<div class="avatar"></div><div><h3></h3><div class="online"></div></div>';
+  $("header").querySelector(".avatar").textContent = active.username[0].toUpperCase();
+  $("header").querySelector("h3").textContent = active.username;
+  const o = $("header").querySelector(".online");
+  o.textContent = on ? "● Online" : "● Offline"; if (on) o.classList.add("on");
+}
+
+async function openChat(u) {
+  active = u; unread[u.id] = 0;
+  renderUsers(); updateHeader();
+  $("typing").textContent = ""; $("form").style.display = "flex"; $("messages").innerHTML = "";
+  const msgs = await (await fetch("/api/messages/" + u.id)).json();
+  if (!msgs.length) $("messages").innerHTML = '<div class="empty">Say hi to ' + u.username.replace(/[<>&]/g, "") + '!</div>';
+  msgs.forEach(addMsg);
+  $("text").focus();
+}
+
+function addMsg(m) {
+  const box = $("messages");
+  const empty = box.querySelector(".empty"); if (empty) empty.remove();
+  const d = document.createElement("div");
+  d.className = "message " + (m.sender_id === me.id ? "sent" : "received");
+  d.textContent = m.body;
+  const s = document.createElement("small");
+  s.textContent = new Date(m.created_at).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+  d.appendChild(s); box.appendChild(d); box.scrollTop = box.scrollHeight;
+}
+
+$("form").onsubmit = e => {
+  e.preventDefault();
+  const body = $("text").value.trim();
+  if (!body || !active) return;
+  socket.emit("message", {to: active.id, body}, r => { if (r && r.error) alert(r.error); });
+  $("text").value = "";
+};
+$("text").oninput = () => {
+  if (active && Date.now() - lastTyping > 800) { lastTyping = Date.now(); socket.emit("typing", {to: active.id}); }
+};
+$("search").oninput = renderUsers;
+$("logout").onclick = async () => { await fetch("/api/logout", {method: "POST"}); if (socket) socket.disconnect(); location.href = "/login"; };
+
+init();
+</script>
+</body></html>

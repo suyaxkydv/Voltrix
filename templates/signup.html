@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create Account | Voltrix</title>
+<style>
+* {box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f4f6f8;min-height:100vh;display:flex;justify-content:center;align-items:center}
+.box{width:400px;max-width:94vw;background:#fff;padding:40px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.1)}
+.logo{text-align:center;margin-bottom:30px}.logo h1{font-size:32px;color:#4f46e5;margin-bottom:8px}.logo p{color:#777;font-size:14px}
+.fg{margin-bottom:18px}label{display:block;margin-bottom:7px;font-size:14px;font-weight:bold;color:#333}
+input{width:100%;padding:12px;border:1px solid #ddd;border-radius:7px;font-size:15px;outline:none}input:focus{border-color:#4f46e5}
+button{width:100%;padding:13px;border:none;border-radius:7px;background:#4f46e5;color:#fff;font-size:16px;font-weight:bold;cursor:pointer}
+button:hover{background:#4338ca}#err{color:#dc2626;font-size:14px;min-height:20px;margin-bottom:10px}
+.alt{text-align:center;margin-top:20px;font-size:14px;color:#777}.alt a{color:#4f46e5;text-decoration:none;font-weight:bold}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo"><h1>Voltrix</h1><p>Create your account and start chatting.</p></div>
+  <form id="signupForm">
+    <div class="fg"><label for="username">Username</label>
+      <input id="username" placeholder="Choose a username" required autocomplete="username"></div>
+    <div class="fg"><label for="email">Email</label>
+      <input type="email" id="email" placeholder="Enter your email" required></div>
+    <div class="fg"><label for="password">Password</label>
+      <input type="password" id="password" placeholder="Create a password" required autocomplete="new-password"></div>
+    <div class="fg"><label for="confirmPassword">Confirm Password</label>
+      <input type="password" id="confirmPassword" placeholder="Confirm your password" required autocomplete="new-password"></div>
+    <div id="err"></div>
+    <button type="submit">Create Account</button>
+  </form>
+  <div class="alt">Already have an account? <a href="/login">Login</a></div>
+</div>
+
+<script>
+document.getElementById("signupForm").addEventListener("submit", async function (e) {
+  e.preventDefault();
+
+  const payload = {
+    username: document.getElementById("username").value,
+    email: document.getElementById("email").value,
+    password: document.getElementById("password").value,
+    confirmPassword: document.getElementById("confirmPassword").value
+  };
+
+  const r = await fetch("/api/signup", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload)
+  });
+  const d = await r.json();
+
+  if (d.success) {
+    location.href = "/chat";
+  } else {
+    document.getElementById("err").textContent = d.message;
+  }
+});
+</script>
+</body>
+</html>
